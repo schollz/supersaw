@@ -10,7 +10,7 @@ clean:
 
 build: pico-sdk
 	mkdir -p build
-	cmake -DCMAKE_BUILD_TYPE=Debug ..
+	cd build && cmake -DCMAKE_BUILD_TYPE=Debug ..
 
 pico-sdk:
 	git clone https://github.com/raspberrypi/pico-sdk
