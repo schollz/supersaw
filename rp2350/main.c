@@ -28,6 +28,7 @@ void print_memory_usage() {
          total_heap);
 }
 
+#include "hardware/clocks.h"
 #include "pico/stdlib.h"
 
 #define ONBOARD_LED 25
@@ -161,6 +162,8 @@ void Voice_set_release(Voice *voice, float release) {
 float buffer[1000];
 
 int main() {
+  // overclock
+  set_sys_clock_khz(240000, true);
   stdio_init_all();
   gpio_init(ONBOARD_LED);
   gpio_set_dir(ONBOARD_LED, GPIO_OUT);
@@ -183,8 +186,8 @@ int main() {
 #define NUM_VOICES 3
   Voice voice[NUM_VOICES];
   // overtone series
-  float freqs[NUM_VOICES] = {110, 220, 440, 55, 1760, 3520, 7040};
-  float amps[NUM_VOICES] = {0.75, 0.5, 0.25, 0.25, 0.125, 0.0625, 0.03125};
+  float freqs[7] = {110, 220, 440, 55, 1760, 3520, 7040};
+  float amps[7] = {0.75, 0.5, 0.25, 0.25, 0.125, 0.0625, 0.03125};
   for (int i = 0; i < NUM_VOICES; i++) {
     Voice_init(&voice[i], freqs[i], amps[i], 48000);
     Voice_gate(&voice[i], true);

@@ -17,7 +17,9 @@ add_executable(hello_usb
 )
 
 # pull in common dependencies
-target_link_libraries(hello_usb pico_stdlib)
+target_link_libraries(hello_usb pico_stdlib
+ hardware_clocks
+)
 
 set_property(TARGET ${PROJECT_NAME} APPEND_STRING PROPERTY LINK_FLAGS "-Wl,--print-memory-usage")
 

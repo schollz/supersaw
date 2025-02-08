@@ -60,7 +60,7 @@ float detuneAmounts[7] = {-0.11002313, -0.06288439, -0.01952356, 0,
 
 float amplitudeAmounts[7] = {0.5, 0.3, 0.4, 0.8, 0.8, 0.4, 0.3};
 void LFSaws_init(LFSaws *saws, float freq, float sample_rate) {
-  float detuneFactor = freq * detuneCurve(0.5);
+  float detuneFactor = freq * detuneCurve(0.6);
   // print to stderr
   fprintf(stderr, "detuneFactor: %f\n", detuneFactor);
   for (int i = 0; i < 7; i++) {
@@ -121,7 +121,7 @@ float Voice_next_sample(Voice *voice) {
   sample += LFSaws_next_sample(&voice->saws);
   sample += WhiteNoise_next_sample(&voice->noise);
   // generate random number between 0.97 and 0.99
-  float random = (float)rand() / RAND_MAX * 0.15 + 0.8;
+  float random = (float)rand() / RAND_MAX * 0.18 + 0.8;
   sample = OnePole_next(&voice->one_pole, sample, random);
   sample = sample * ADSR_process(&voice->adsr);
   sample = sample * voice->amp;
@@ -147,15 +147,15 @@ int main(int argc, char *argv[]) {
   DattorroVerb_setInputDiffusion2(verb, 0.75);
   DattorroVerb_setDecayDiffusion(verb, 0.5);
   DattorroVerb_setDecay(verb, 0.9);
-  DattorroVerb_setDamping(verb, 0.3);
+  DattorroVerb_setDamping(verb, 0.4);
 
-#define NUM_VOICES 7
+#define NUM_VOICES 3
   Voice voice[NUM_VOICES];
   // overtone series
-  float freqs[NUM_VOICES] = {110, 220, 440, 55, 1760, 3520, 7040};
-  float amps[NUM_VOICES] = {0.75, 0.5, 0.25, 0.25, 0.125, 0.0625, 0.03125};
+  float freqs[7] = {440, 550, 110, 55, 1760, 3520, 7040};
+  float amps[7] = {0.75, 0.5, 0.25, 0.25, 0.125, 0.0625, 0.03125};
   for (int i = 0; i < NUM_VOICES; i++) {
-    Voice_init(&voice[i], freqs[i], amps[i], 48000);
+    Voice_init(&voice[i], freqs[i] / 2, amps[i], 48000);
     Voice_gate(&voice[i], true);
     Voice_set_release(&voice[i], 0.1);
   }
