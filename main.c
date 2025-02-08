@@ -77,6 +77,18 @@ float LFSaws_next_sample(LFSaws *saws) {
   return next;
 }
 
+typedef struct WhiteNoise {
+  float amplitude;
+} WhiteNoise;
+
+void WhiteNoise_init(WhiteNoise *noise, float amplitude) {
+  noise->amplitude = amplitude;
+}
+
+float WhiteNoise_next_sample(WhiteNoise *noise) {
+  return ((float)rand() / RAND_MAX - 0.5) * noise->amplitude;
+}
+
 typedef struct OnePole {
   float prev_out;
 } OnePole;
@@ -92,22 +104,27 @@ typedef struct Voice {
   LFSaws saws;
   OnePole one_pole;
   ADSR adsr;
+  WhiteNoise noise;
   float amp;
 } Voice;
 
 void Voice_init(Voice *voice, float freq, float amp, float sample_rate) {
+  voice->amp = amp;
+  // WhiteNoise_init(&voice->noise, 0.05);
   LFSaws_init(&voice->saws, freq, sample_rate);
   OnePole one_pole;
-  ADSR_init(&voice->adsr, 4, 0.1, 0.5, 0.5, 2.0, 48000);
+  ADSR_init(&voice->adsr, 4, 1, 0.707, 0.5, 2.0, 48000);
 }
 
 float Voice_next_sample(Voice *voice) {
   float sample = 0;
   sample += LFSaws_next_sample(&voice->saws);
+  sample += WhiteNoise_next_sample(&voice->noise);
   // generate random number between 0.97 and 0.99
-  float random = (float)rand() / RAND_MAX * 0.02 + 0.97;
+  float random = (float)rand() / RAND_MAX * 0.15 + 0.8;
   sample = OnePole_next(&voice->one_pole, sample, random);
   sample = sample * ADSR_process(&voice->adsr);
+  sample = sample * voice->amp;
   return sample;
 }
 
@@ -135,13 +152,11 @@ int main(int argc, char *argv[]) {
 #define NUM_VOICES 7
   Voice voice[NUM_VOICES];
   // overtone series
-  float freqs[NUM_VOICES] = {110, 220, 440, 880, 1760, 3520, 7040};
-  float amps[NUM_VOICES] = {0.5, 0.25, 0.125, 0.125 / 2, 0.125 / 8, 0.05, 0.02};
+  float freqs[NUM_VOICES] = {110, 220, 440, 55, 1760, 3520, 7040};
+  float amps[NUM_VOICES] = {0.75, 0.5, 0.25, 0.25, 0.125, 0.0625, 0.03125};
   for (int i = 0; i < NUM_VOICES; i++) {
-    Voice_init(&voice[i], freqs[i] / 2, amps[i], 48000);
+    Voice_init(&voice[i], freqs[i], amps[i], 48000);
     Voice_gate(&voice[i], true);
-    float random_release = (float)rand() / RAND_MAX;
-    // convert to range 1 to 5
     Voice_set_release(&voice[i], 0.1);
   }
 
