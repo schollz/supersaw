@@ -130,13 +130,13 @@ int main(int argc, char *argv[]) {
   DattorroVerb_setInputDiffusion2(verb, 0.75);
   DattorroVerb_setDecayDiffusion(verb, 0.5);
   DattorroVerb_setDecay(verb, 0.9);
-  DattorroVerb_setDamping(verb, 0.2);
+  DattorroVerb_setDamping(verb, 0.3);
 
-#define NUM_VOICES 5
+#define NUM_VOICES 7
   Voice voice[NUM_VOICES];
   // overtone series
-  float freqs[NUM_VOICES] = {110, 220, 440, 880, 1760};
-  float amps[NUM_VOICES] = {0.5, 0.25, 0.125, 0.125 / 2, 0.125 / 8};
+  float freqs[NUM_VOICES] = {110, 220, 440, 880, 1760, 3520, 7040};
+  float amps[NUM_VOICES] = {0.5, 0.25, 0.125, 0.125 / 2, 0.125 / 8, 0.05, 0.02};
   for (int i = 0; i < NUM_VOICES; i++) {
     Voice_init(&voice[i], freqs[i] / 2, amps[i], 48000);
     Voice_gate(&voice[i], true);
@@ -168,8 +168,19 @@ int main(int argc, char *argv[]) {
   long seconds = end.tv_sec - start.tv_sec;
   long nanoseconds = end.tv_nsec - start.tv_nsec;
   long microseconds = seconds * 1000000 + nanoseconds / 1000;
-  fprintf(stderr, "Time per sample: %2.1f us\n",
-          (float)microseconds / total_samples);
+  float microseconds_per_sample = (float)microseconds / total_samples;
+  float cpu1 = 1.70;  // ghz
+  float cpu2 = 0.15;  // ghz
+  // calculate microseconds per sample on cpu2
+  float microseconds_per_sample2 = microseconds_per_sample * cpu1 / cpu2;
+  // calculate the percent of an audioblock where an audioblock
+  float audio_block_samples = 1;
+  float sample_rate = 48000;  // samples
+  float audio_block_time =
+      audio_block_samples / sample_rate * 1000000;  // in microseconds
+  float percent =
+      microseconds_per_sample2 * audio_block_samples / audio_block_time * 100;
+  fprintf(stderr, "Percent audioblock: %2.1f %%\n", (float)percent);
 
   for (int i = 0; i < total_samples * 2; i++) {
     fwrite(&buffer[i], sizeof(int16_t), 1, stdout);
