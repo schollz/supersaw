@@ -99,7 +99,7 @@ float detuneCurve(float x) {
 float detuneAmounts[7] = {-0.11002313, -0.06288439, -0.01952356, 0,
                           0.01991221,  0.06216538,  0.10745242};
 
-float amplitudeAmounts[7] = {0.5, 0.3, 0.4, 0.8, 0.8, 0.4, 0.3};
+float amplitudeAmounts[7] = {0.5, 0.6, 0.7, 0.8, 0.7, 0.6, 0.5};
 void LFSaws_init(LFSaws *saws, float freq, float sample_rate) {
   // generate random number between 0.4 and 0.6
   float detuneFactor = freq * detuneCurve(0.6);
@@ -162,7 +162,7 @@ float Voice_next_sample(Voice *voice) {
   sample += LFSaws_next_sample(&voice->saws);
   sample += WhiteNoise_next_sample(&voice->noise);
   // generate random number between 0.97 and 0.99
-  sample = OnePole_next(&voice->one_pole, sample, 0.8);
+  sample = OnePole_next(&voice->one_pole, sample, 0.9);
   sample = sample * ADSR_process(&voice->adsr);
   sample = sample * voice->amp;
   return sample;
@@ -202,7 +202,7 @@ int main() {
 #define NUM_VOICES 3
   Voice voice[NUM_VOICES];
   // overtone series
-  float freqs[7] = {110, 220, 440, 55, 1760, 3520, 7040};
+  float freqs[7] = {111, 219, 441, 55, 1760, 3520, 7040};
   float amps[7] = {0.75, 0.5, 0.25, 0.25, 0.125, 0.0625, 0.03125};
   for (int i = 0; i < NUM_VOICES; i++) {
     Voice_init(&voice[i], freqs[i], amps[i], 44100);
@@ -239,11 +239,11 @@ int main() {
       if (i == 44100 * 5) {
         for (int j = 0; j < NUM_VOICES; j++) Voice_gate(&voice[j], false);
       }
-      DattorroVerb_process(verb, sample);
-      float sampleL = DattorroVerb_getLeft(verb);
-      float sampleR = DattorroVerb_getRight(verb);
-      samples[i] = (int16_t)(sampleL * 32767);
-      samples[i + 1] = (int16_t)(sampleR * 32767);
+      // DattorroVerb_process(verb, sample);
+      // float sampleL = DattorroVerb_getLeft(verb);
+      // float sampleR = DattorroVerb_getRight(verb);
+      samples[i] = (int16_t)(sample * 32767);
+      samples[i + 1] = (int16_t)(sample * 32767);
       // samples[i] = sampleL(vol * sine_wave_table[pos >> 16u]) >> 8u;
       // samples[i + 1] = (vol * sine_wave_table[pos >> 16u]) >> 8u;
       // pos += step;
