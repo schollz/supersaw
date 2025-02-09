@@ -1,37 +1,53 @@
-#include <malloc.h>
+/**
+ * Copyright (c) 2020 Raspberry Pi (Trading) Ltd.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #include <math.h>
-#include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-#include <unistd.h>
 
-uint32_t getTotalHeap() {
-  extern char __StackLimit, __bss_end__;
-
-  return &__StackLimit - &__bss_end__;
-}
-
-uint32_t getFreeHeap() {
-  struct mallinfo m = mallinfo();
-
-  return getTotalHeap() - m.uordblks;
-}
-
-void print_memory_usage() {
-  uint32_t total_heap = getTotalHeap();
-  uint32_t used_heap = total_heap - getFreeHeap();
-  printf("memory usage: %2.1f%% (%ld/%ld)\n",
-         (float)(used_heap) / (float)(total_heap) * 100.0, used_heap,
-         total_heap);
-}
-
-#include "hardware/clocks.h"
+#include "pico/audio_i2s.h"
 #include "pico/stdlib.h"
 
-#define ONBOARD_LED 25
+#define SINE_WAVE_TABLE_LEN 2048
+#define SAMPLES_PER_BUFFER 256
+
+static int16_t sine_wave_table[SINE_WAVE_TABLE_LEN];
+
+struct audio_buffer_pool *init_audio() {
+  static audio_format_t audio_format = {
+      .format = AUDIO_BUFFER_FORMAT_PCM_S16,
+      .sample_freq = 44100,
+      .channel_count = 2,
+  };
+
+  static struct audio_buffer_format producer_format = {.format = &audio_format,
+                                                       .sample_stride = 4};
+
+  struct audio_buffer_pool *producer_pool =
+      audio_new_producer_pool(&producer_format, 3,
+                              SAMPLES_PER_BUFFER);  // todo correct size
+  bool __unused ok;
+  const struct audio_format *output_format;
+  struct audio_i2s_config config = {
+      .data_pin = PICO_AUDIO_I2S_DATA_PIN,
+      .clock_pin_base = PICO_AUDIO_I2S_CLOCK_PIN_BASE,
+      .dma_channel = 6,
+      .pio_sm = 1,
+  };
+
+  output_format = audio_i2s_setup(&audio_format, &config);
+  if (!output_format) {
+    panic("PicoAudio: Unable to open audio device.\n");
+  }
+
+  ok = audio_i2s_connect(producer_pool);
+  assert(ok);
+  audio_i2s_set_enabled(true);
+
+  return producer_pool;
+}
 
 #include "adsr.h"
 #include "verb.h"
@@ -137,7 +153,7 @@ void Voice_init(Voice *voice, float freq, float amp, float sample_rate) {
   voice->amp = amp;
   // WhiteNoise_init(&voice->noise, 0.05);
   LFSaws_init(&voice->saws, freq, sample_rate);
-  ADSR_init(&voice->adsr, 4, 1, 0.707, 0.5, 2.0, 48000);
+  ADSR_init(&voice->adsr, 4, 1, 0.707, 0.5, 2.0, 44100);
 }
 
 float Voice_next_sample(Voice *voice) {
@@ -158,18 +174,19 @@ void Voice_set_release(Voice *voice, float release) {
   ADSR_set_release(&voice->adsr, release);
 }
 
-float buffer[1000];
-
 int main() {
-  // overclock
-  set_sys_clock_khz(240000, true);
   stdio_init_all();
-  gpio_init(ONBOARD_LED);
-  gpio_set_dir(ONBOARD_LED, GPIO_OUT);
 
-  sleep_ms(1000);
-  printf("begin\n");
-  sleep_ms(1000);
+  for (int i = 0; i < SINE_WAVE_TABLE_LEN; i++) {
+    sine_wave_table[i] =
+        32767 * cosf(i * 2 * (float)(M_PI / SINE_WAVE_TABLE_LEN));
+  }
+
+  uint32_t step = 0x200000;
+  uint32_t pos = 0;
+  uint32_t pos2 = 0x8000;  // Introduce phase difference for stereo effect
+  uint32_t pos_max = 0x10000 * SINE_WAVE_TABLE_LEN;
+  uint vol = 128;
 
   // reverb
   struct sDattorroVerb *verb = DattorroVerb_create();
@@ -188,59 +205,52 @@ int main() {
   float freqs[7] = {110, 220, 440, 55, 1760, 3520, 7040};
   float amps[7] = {0.75, 0.5, 0.25, 0.25, 0.125, 0.0625, 0.03125};
   for (int i = 0; i < NUM_VOICES; i++) {
-    Voice_init(&voice[i], freqs[i], amps[i], 48000);
+    Voice_init(&voice[i], freqs[i], amps[i], 44100);
     Voice_gate(&voice[i], true);
     Voice_set_release(&voice[i], 0.1);
   }
+  struct audio_buffer_pool *ap = init_audio();
 
-  // print total memory
-
+  uint64_t end_time = 0;
+  uint64_t start_time = 0;
   while (true) {
-    print_memory_usage();
-    gpio_put(ONBOARD_LED, 1);
-    sleep_ms(500);
-    gpio_put(ONBOARD_LED, 0);
-    sleep_ms(500);
-
-    float total_samples = 48000;
-    // start time
-    uint64_t start_time = time_us_64();
-    for (int i = 0; i < total_samples; i++) {
-      float sample = 0;
-      for (int j = 0; j < NUM_VOICES; j++)
-        sample += Voice_next_sample(&voice[j]) / NUM_VOICES;
-      if (i == 48000 * 5) {
-        for (int j = 0; j < NUM_VOICES; j++) Voice_gate(&voice[j], false);
-      }
-      buffer[i % 1000] = sample;
+    int c = getchar_timeout_us(0);
+    if (c >= 0) {
+      if (c == '-' && vol) vol -= 4;
+      if ((c == '=' || c == '+') && vol < 255) vol += 4;
+      if (c == '[' && step > 0x10000) step -= 0x10000;
+      if (c == ']' && step < (SINE_WAVE_TABLE_LEN / 16) * 0x20000)
+        step += 0x10000;
+      if (c == 'q') break;
+      float percent_audio_block =
+          (float)(start_time - end_time) / (float)SAMPLES_PER_BUFFER;
+      printf("vol = %d, step = %d %2.1f     \r", vol, step >> 16,
+             percent_audio_block);
     }
-    // end time
-    uint64_t end_time = time_us_64();
-    float total_time = (float)(end_time - start_time);
-    float us_per_voice =
-        (float)(end_time - start_time) / total_samples / NUM_VOICES;
-
-    // start time
-    start_time = time_us_64();
-    for (int i = 0; i < total_samples; i++) {
+    struct audio_buffer *buffer = take_audio_buffer(ap, true);
+    int16_t *samples = (int16_t *)buffer->buffer->bytes;
+    end_time = time_us_64();
+    for (uint i = 0; i < buffer->max_sample_count * 2; i += 2) {
       float sample = 0;
       for (int j = 0; j < NUM_VOICES; j++)
         sample += Voice_next_sample(&voice[j]) / NUM_VOICES;
-      if (i == 48000 * 5) {
+      if (i == 44100 * 5) {
         for (int j = 0; j < NUM_VOICES; j++) Voice_gate(&voice[j], false);
       }
       DattorroVerb_process(verb, sample);
       float sampleL = DattorroVerb_getLeft(verb);
       float sampleR = DattorroVerb_getRight(verb);
-      buffer[i % 1000] = sampleL + sampleR;
+      samples[i] = (int16_t)(sampleL * 32767);
+      samples[i + 1] = (int16_t)(sampleR * 32767);
+      // samples[i] = sampleL(vol * sine_wave_table[pos >> 16u]) >> 8u;
+      // samples[i + 1] = (vol * sine_wave_table[pos >> 16u]) >> 8u;
+      // pos += step;
+      // if (pos >= pos_max) pos -= pos_max;
     }
-    // end time
-    end_time = time_us_64();
-    float us_per_reverb =
-        ((end_time - start_time) - total_time) / total_samples;
-    printf("us per voice: %2.1f\n", us_per_voice);
-    printf("us per reverb: %2.1f\n", us_per_reverb);
-    printf("%% of block: %2.1f%%\n", ((end_time - start_time) / total_samples) /
-                                         (1000000.0f / 48000.0f) * 100.0f);
+    start_time = time_us_64();
+    buffer->sample_count = buffer->max_sample_count;
+    give_audio_buffer(ap, buffer);
   }
+  puts("\n");
+  return 0;
 }
