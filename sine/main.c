@@ -101,7 +101,8 @@ float detuneAmounts[7] = {-0.11002313, -0.06288439, -0.01952356, 0,
 
 float amplitudeAmounts[7] = {0.5, 0.3, 0.4, 0.8, 0.8, 0.4, 0.3};
 void LFSaws_init(LFSaws *saws, float freq, float sample_rate) {
-  float detuneFactor = freq * detuneCurve(0.5);
+  // generate random number between 0.4 and 0.6
+  float detuneFactor = freq * detuneCurve(0.6);
   // print to stderr
   fprintf(stderr, "detuneFactor: %f\n", detuneFactor);
   for (int i = 0; i < 7; i++) {
@@ -161,8 +162,7 @@ float Voice_next_sample(Voice *voice) {
   sample += LFSaws_next_sample(&voice->saws);
   sample += WhiteNoise_next_sample(&voice->noise);
   // generate random number between 0.97 and 0.99
-  float random = (float)rand() / RAND_MAX * 0.15 + 0.8;
-  sample = OnePole_next(&voice->one_pole, sample, random);
+  sample = OnePole_next(&voice->one_pole, sample, 0.8);
   sample = sample * ADSR_process(&voice->adsr);
   sample = sample * voice->amp;
   return sample;
@@ -216,12 +216,14 @@ int main() {
   while (true) {
     int c = getchar_timeout_us(0);
     if (c >= 0) {
-      if (c == '-' && vol) vol -= 4;
-      if ((c == '=' || c == '+') && vol < 255) vol += 4;
-      if (c == '[' && step > 0x10000) step -= 0x10000;
-      if (c == ']' && step < (SINE_WAVE_TABLE_LEN / 16) * 0x20000)
-        step += 0x10000;
-      if (c == 'q') break;
+      if (c == '-' && vol) {
+        for (int i = 0; i < NUM_VOICES; i++) Voice_gate(&voice[i], false);
+      }
+      if (c == '=' || c == '+') {
+        // start all voices
+        for (int i = 0; i < NUM_VOICES; i++) Voice_gate(&voice[i], true);
+      }
+
       float percent_audio_block =
           (float)(start_time - end_time) / (float)SAMPLES_PER_BUFFER;
       printf("vol = %d, step = %d %2.1f     \r", vol, step >> 16,
